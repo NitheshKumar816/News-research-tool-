@@ -164,14 +164,14 @@ if query:
 
     retriever = vectorstore.as_retriever(
     search_type="similarity",
-    search_kwargs={"k": 20}
+    search_kwargs={"k": 5}
 )
     try:
         # ---------------------------
         # Get raw documents
         # ---------------------------
-        docs = retriever.get_relevant_documents(query)
-        full_text = " ".join([doc.page_content for doc in docs])
+        docs = retriever.invoke(query)
+        full_text = " ".join([doc.page_content for doc in docs])[:2000]  # Truncate for T5 token limit
 
         answer = ""
 
@@ -217,20 +217,21 @@ if query:
                 answer = "Not available in articles"
 
         # ---------------------------
-        # DEFAULT LLM ANSWER
+        # DEFAULT LLM ANSWER (Direct to avoid chain issues)
         # ---------------------------
         else:
-            chain = RetrievalQAWithSourcesChain.from_chain_type(
-                llm=llm,
-                retriever=retriever
-            )
+            # Direct LLM on truncated context
+            llm_prompt = f"""Question: {query}
+            
+Context: {full_text[:1500]}
 
-            result = chain.invoke({"question": query})
-            answer = result.get("answer", "")
-
-        # ---------------------------
-        # DISPLAY
-        # ---------------------------
+Concise Answer:"""
+            
+            try:
+                answer = llm.invoke(llm_prompt)
+            except Exception as llm_err:
+                st.warning(f"LLM error: {llm_err}")
+                answer = f"Key info: {full_text[:500]}..."
         st.header("Answer")
 
         if answer and "not available" not in answer.lower():
